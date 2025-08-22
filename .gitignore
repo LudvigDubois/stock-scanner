@@ -1,0 +1,22 @@
+# Environment
+# Ignore the virtual environment folder
+venv/
+.venv/
+
+# Data files
+# Ignore the SQLite database file
+*.db
+# Ignore generated text files like tickers.txt and TradingView watchlists
+*.txt
+
+# Python cache
+# Ignore compiled Python files and cache directories
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / Editor specific files
+.idea/
+.vscode/
+*.DS_Store
