@@ -2,7 +2,7 @@
 # Description: Fetches historical stock data using yfinance in larger, parallelized batches
 # for maximum speed. Uses precise logic to skip batches that are already up-to-date.
 # Author: Gemini
-# Version: 9.0
+# Version: 10.0 (Definitive)
 
 import sqlite3
 import yfinance as yf
@@ -12,10 +12,12 @@ import time
 
 # --- Configuration ---
 DB_FILE = "stock_market_data.db"
-# The default history to fetch for brand new tickers.
-START_DATE = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+# This is the default history to fetch for BRAND NEW tickers to ensure
+# all calculations (like the 200-day MA) can be performed.
+# This should be set to your longest required period.
+START_DATE = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
 BATCH_SIZE = 500
-DELAY_SECONDS = 0.5
+DELAY_SECONDS = 0.2
 
 # --- Database Functions ---
 
@@ -42,7 +44,9 @@ def initialize_database():
             CREATE TABLE IF NOT EXISTS tickers_exchange (
                 ticker TEXT PRIMARY KEY,
                 exchange TEXT NOT NULL,
-                asset_class TEXT NOT NULL
+                asset_class TEXT NOT NULL,
+                sector TEXT,
+                industry TEXT
             )
         ''')
         conn.commit()
@@ -141,10 +145,12 @@ def fetch_and_store_data_in_batches():
         new_tickers_exist = any(t not in last_dates for t in batch_tickers)
 
         if new_tickers_exist or not last_dates:
+            # If there's at least one new ticker, we must download the full history for the batch to backfill it.
+            # The global START_DATE is used here.
             batch_start_date = START_DATE
             print("New tickers found or batch is empty, fetching full history...")
         else:
-            # *** FIX: Precise check for whether the batch is truly up-to-date. ***
+            # If all tickers in the batch already exist, we can do a quick, targeted update.
             today = datetime.now().date()
             weekday = today.weekday() # Monday is 0, Sunday is 6
 
@@ -153,8 +159,9 @@ def fetch_and_store_data_in_batches():
                 # ...the data is up-to-date if it includes last Friday's close.
                 required_date = today - timedelta(days=weekday - 4)
             else: # If today is a weekday...
-                # ...the data is up-to-date if it includes today's close.
-                required_date = today
+                # ...the data is up-to-date if it includes today's close (or yesterday's if market is closed).
+                # To be safe, we check against yesterday.
+                required_date = today - timedelta(days=1)
 
             min_last_date_str = min(last_dates.values())
             min_last_date = datetime.strptime(min_last_date_str, '%Y-%m-%d').date()
@@ -164,6 +171,7 @@ def fetch_and_store_data_in_batches():
                 continue
             
             # If not up-to-date, calculate the start date for a targeted update.
+            # This is what makes daily updates fast.
             batch_start_date = (min_last_date + timedelta(days=1)).strftime('%Y-%m-%d')
         
         print(f"Fetching data since {batch_start_date}...")
