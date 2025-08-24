@@ -8,10 +8,10 @@ import sqlite3
 import pandas as pd
 import numpy as np
 
-from stock_scanner import MIN_DOLLAR_VOLUME, MIN_ADR_PERCENT, MIN_CLOSE_PRICE, AVG_VOL_DAYS, ADR_DAYS, GAIN_DAYS_1M, GAIN_DAYS_3M
+from stock_scanner import MIN_DOLLAR_VOLUME, MIN_ADR_PERCENT, MIN_CLOSE_PRICE, AVG_VOL_DAYS, ADR_DAYS, GAIN_DAYS_1M, GAIN_DAYS_3M, GAIN_DAYS_6M
 
 # --- Ticker to Inspect (Edit this value) ---
-TICKER_TO_INSPECT = "GXAI"  # <--- CHANGE THIS TO THE TICKER YOU WANT TO CHECK
+TICKER_TO_INSPECT = "UUUU"  # <--- CHANGE THIS TO THE TICKER YOU WANT TO CHECK
 
 # --- Scan Parameters (Copied from stock_scanner.py for consistency) ---
 DB_FILE = "stock_market_data.db"
@@ -44,9 +44,9 @@ def inspect_ticker(ticker):
     df.sort_values(by='date', inplace=True)
 
     # Check if there's enough data for the longest calculation period
-    if len(df) < GAIN_DAYS_3M:
+    if len(df) < GAIN_DAYS_6M:
         print(f"Warning: Not enough historical data for {ticker} to perform all calculations.")
-        print(f"Required: {GAIN_DAYS_3M} days, Found: {len(df)} days.")
+        print(f"Required: {GAIN_DAYS_6M} days, Found: {len(df)} days.")
         return
 
     df['dollar_volume'] = df['close'] * df['volume']
@@ -60,6 +60,9 @@ def inspect_ticker(ticker):
     min_low_3m = df['low'].rolling(window=GAIN_DAYS_3M).min()
     df['gain_3m'] = (df['close'] / min_low_3m - 1) * 100
 
+    min_low_6m = df['low'].rolling(window=GAIN_DAYS_6M).min()
+    df['gain_6m'] = (df['close'] / min_low_3m - 1) * 100
+
     # Get the most recent row of data
     latest_metrics = df.iloc[-1]
 
@@ -71,12 +74,14 @@ def inspect_ticker(ticker):
     adr = latest_metrics['adr_percent']
     gain1m = latest_metrics['gain_1m']
     gain3m = latest_metrics['gain_3m']
+    gain6m = latest_metrics['gain_6m']
 
     print(f"Latest Close Price: ${price:,.2f}")
     print(f"20-Day Avg Dollar Volume: ${avg_vol:,.0f}")
     print(f"20-Day ADR: {adr:.2f}%")
     print(f"1-Month Gain (21 days): {gain1m:.2f}%")
     print(f"3-Month Gain (63 days): {gain3m:.2f}%")
+    print(f"6-Month Gain (126 days): {gain6m:.2f}%")
 
     print("\n--- Criteria Check ---")
     

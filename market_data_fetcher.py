@@ -1,8 +1,8 @@
 # data_fetcher.py
 # Description: Fetches historical stock data using yfinance in larger, parallelized batches
-# for maximum speed. Uses precise logic to skip batches that are already up-to-date.
+# for maximum speed. Includes robust error handling and performance timing.
 # Author: Gemini
-# Version: 10.0 (Definitive)
+# Version: 11.1 (with Timing)
 
 import sqlite3
 import yfinance as yf
@@ -12,12 +12,11 @@ import time
 
 # --- Configuration ---
 DB_FILE = "stock_market_data.db"
-# This is the default history to fetch for BRAND NEW tickers to ensure
+# The default history to fetch for BRAND NEW tickers to ensure
 # all calculations (like the 200-day MA) can be performed.
-# This should be set to your longest required period.
 START_DATE = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
 BATCH_SIZE = 500
-DELAY_SECONDS = 0.2
+DELAY_SECONDS = 0.5
 
 # --- Database Functions ---
 
@@ -117,6 +116,10 @@ def reshape_batch_data(data):
         'Open': 'open', 'High': 'high', 'Low': 'low', 
         'Close': 'close', 'Volume': 'volume'
     }, inplace=True)
+    
+    # Drop rows with missing price data (from failed downloads)
+    data.dropna(subset=['open'], inplace=True)
+    
     required_cols = ['ticker', 'date', 'open', 'high', 'low', 'close', 'volume']
     data = data.reindex(columns=required_cols)
     data['date'] = data['date'].dt.strftime('%Y-%m-%d')
@@ -140,27 +143,23 @@ def fetch_and_store_data_in_batches():
         
         print(f"\n--- Processing Batch {batch_num}/{total_batches} ({len(batch_tickers)} tickers) ---")
 
+        # --- Start CPU Time Measurement (Part 1) ---
+        cpu_part1_start = time.time()
+
         last_dates = get_last_fetch_dates_for_batch(batch_tickers)
 
         new_tickers_exist = any(t not in last_dates for t in batch_tickers)
 
         if new_tickers_exist or not last_dates:
-            # If there's at least one new ticker, we must download the full history for the batch to backfill it.
-            # The global START_DATE is used here.
             batch_start_date = START_DATE
             print("New tickers found or batch is empty, fetching full history...")
         else:
-            # If all tickers in the batch already exist, we can do a quick, targeted update.
             today = datetime.now().date()
-            weekday = today.weekday() # Monday is 0, Sunday is 6
+            weekday = today.weekday()
 
-            # Determine what date the data *should* be updated to for a nightly scan.
-            if weekday >= 5: # If today is Saturday or Sunday...
-                # ...the data is up-to-date if it includes last Friday's close.
+            if weekday >= 5:
                 required_date = today - timedelta(days=weekday - 4)
-            else: # If today is a weekday...
-                # ...the data is up-to-date if it includes today's close (or yesterday's if market is closed).
-                # To be safe, we check against yesterday.
+            else:
                 required_date = today - timedelta(days=1)
 
             min_last_date_str = min(last_dates.values())
@@ -170,24 +169,34 @@ def fetch_and_store_data_in_batches():
                 print("All tickers in this batch are up to date. Skipping.")
                 continue
             
-            # If not up-to-date, calculate the start date for a targeted update.
-            # This is what makes daily updates fast.
             batch_start_date = (min_last_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        cpu_part1_end = time.time()
+        cpu_duration_part1 = cpu_part1_end - cpu_part1_start
+        # --- End CPU Time Measurement (Part 1) ---
         
         print(f"Fetching data since {batch_start_date}...")
 
         try:
+            # --- Measure Network Time ---
+            network_start_time = time.time()
             data = yf.download(
                 batch_tickers, 
                 start=batch_start_date, 
                 progress=False,
                 threads=True
             )
+            network_end_time = time.time()
+            network_duration = network_end_time - network_start_time
+            # --- End Network Time Measurement ---
             
             if data.empty:
                 print("No new data found for this batch.")
+                print(f"  -> Network Time: {network_duration:.2f} seconds")
                 continue
 
+            # --- Start CPU Time Measurement (Part 2) ---
+            cpu_part2_start = time.time()
             reshaped_data = reshape_batch_data(data)
             
             rows_to_save = []
@@ -198,12 +207,20 @@ def fetch_and_store_data_in_batches():
                     rows_to_save.append(row)
             
             final_df = pd.DataFrame(rows_to_save)
+            cpu_part2_end = time.time()
+            cpu_duration_part2 = cpu_part2_end - cpu_part2_start
+            # --- End CPU Time Measurement (Part 2) ---
 
             if not final_df.empty:
                 if save_data_to_db(final_df):
                     print(f"Successfully fetched and stored {len(final_df)} new records.")
             else:
                 print("No new records to store for this batch.")
+
+            # --- Print Timing Results ---
+            total_cpu_time = cpu_duration_part1 + cpu_duration_part2
+            print(f"  -> Network Time: {network_duration:.2f} seconds")
+            print(f"  -> CPU (Processing) Time: {total_cpu_time:.4f} seconds")
 
         except Exception as e:
             print(f"An error occurred while processing this batch: {e}")

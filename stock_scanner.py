@@ -11,9 +11,9 @@ from datetime import datetime
 
 # --- Scan Parameters (Edit these values) ---
 DB_FILE = "stock_market_data.db"
-MIN_DOLLAR_VOLUME = 5_000_000
-MIN_ADR_PERCENT = 5.0
-MIN_CLOSE_PRICE = 5.0
+MIN_DOLLAR_VOLUME = 3_000_000
+MIN_ADR_PERCENT = 8.0
+MIN_CLOSE_PRICE = 3.0
 
 AVG_VOL_DAYS = 20
 ADR_DAYS = 20
@@ -22,9 +22,9 @@ GAIN_DAYS_3M = 63
 GAIN_DAYS_6M = 126 # NEW: 6-month period
 MA_DAYS_LONG = 200
 
-GAIN_PERCENTILE_1M = 0.95
-GAIN_PERCENTILE_3M = 0.95
-GAIN_PERCENTILE_6M = 0.95 # NEW: 6-month percentile
+GAIN_PERCENTILE_1M = 0.60
+GAIN_PERCENTILE_3M = 0.60
+GAIN_PERCENTILE_6M = 0.60 # NEW: 6-month percentile
 
 # --- Moving Average Filter ---
 # Set to True to only keep stocks trading above their 200-day moving average.
