@@ -1,8 +1,8 @@
 # data_fetcher.py
 # Description: Fetches historical stock data using yfinance in larger, parallelized batches
-# for maximum speed. Includes robust error handling and performance timing.
+# for maximum speed. This version uses a hybrid approach for maximum efficiency.
 # Author: Gemini
-# Version: 11.1 (with Timing)
+# Version: 14.0 (Definitive Hybrid Logic)
 
 import sqlite3
 import yfinance as yf
@@ -12,8 +12,7 @@ import time
 
 # --- Configuration ---
 DB_FILE = "stock_market_data.db"
-# The default history to fetch for BRAND NEW tickers to ensure
-# all calculations (like the 200-day MA) can be performed.
+# The default history to fetch for BRAND NEW tickers.
 START_DATE = (datetime.now() - timedelta(days=730)).strftime('%Y-%m-%d')
 BATCH_SIZE = 500
 DELAY_SECONDS = 0.5
@@ -34,6 +33,7 @@ def initialize_database():
                 open REAL,
                 high REAL,
                 low REAL,
+
                 close REAL,
                 volume INTEGER,
                 PRIMARY KEY (ticker, date)
@@ -117,7 +117,6 @@ def reshape_batch_data(data):
         'Close': 'close', 'Volume': 'volume'
     }, inplace=True)
     
-    # Drop rows with missing price data (from failed downloads)
     data.dropna(subset=['open'], inplace=True)
     
     required_cols = ['ticker', 'date', 'open', 'high', 'low', 'close', 'volume']
@@ -143,88 +142,58 @@ def fetch_and_store_data_in_batches():
         
         print(f"\n--- Processing Batch {batch_num}/{total_batches} ({len(batch_tickers)} tickers) ---")
 
-        # --- Start CPU Time Measurement (Part 1) ---
-        cpu_part1_start = time.time()
-
         last_dates = get_last_fetch_dates_for_batch(batch_tickers)
-
-        new_tickers_exist = any(t not in last_dates for t in batch_tickers)
-
-        if new_tickers_exist or not last_dates:
-            batch_start_date = START_DATE
-            print("New tickers found or batch is empty, fetching full history...")
-        else:
-            today = datetime.now().date()
-            weekday = today.weekday()
-
-            if weekday >= 5:
-                required_date = today - timedelta(days=weekday - 4)
-            else:
-                required_date = today - timedelta(days=1)
-
-            min_last_date_str = min(last_dates.values())
-            min_last_date = datetime.strptime(min_last_date_str, '%Y-%m-%d').date()
-
-            if min_last_date >= required_date:
-                print("All tickers in this batch are up to date. Skipping.")
-                continue
-            
-            batch_start_date = (min_last_date + timedelta(days=1)).strftime('%Y-%m-%d')
         
-        cpu_part1_end = time.time()
-        cpu_duration_part1 = cpu_part1_end - cpu_part1_start
-        # --- End CPU Time Measurement (Part 1) ---
+        # --- FINAL FIX: HYBRID APPROACH ---
+        # Separate tickers into three groups: new, out-of-date, and up-to-date.
         
-        print(f"Fetching data since {batch_start_date}...")
+        today = datetime.now().date()
+        weekday = today.weekday()
+        required_date = today - timedelta(days=weekday - 4) if weekday >= 5 else today - timedelta(days=1)
 
-        try:
-            # --- Measure Network Time ---
-            network_start_time = time.time()
-            data = yf.download(
-                batch_tickers, 
-                start=batch_start_date, 
-                progress=False,
-                threads=True
-            )
-            network_end_time = time.time()
-            network_duration = network_end_time - network_start_time
-            # --- End Network Time Measurement ---
-            
-            if data.empty:
-                print("No new data found for this batch.")
-                print(f"  -> Network Time: {network_duration:.2f} seconds")
-                continue
+        new_tickers = [t for t in batch_tickers if t not in last_dates]
+        out_of_date_tickers = [t for t in batch_tickers if t in last_dates and datetime.strptime(last_dates[t], '%Y-%m-%d').date() < required_date]
 
-            # --- Start CPU Time Measurement (Part 2) ---
-            cpu_part2_start = time.time()
-            reshaped_data = reshape_batch_data(data)
-            
-            rows_to_save = []
-            for _, row in reshaped_data.iterrows():
-                ticker = row['ticker']
-                last_date_for_ticker = last_dates.get(ticker)
-                if not last_date_for_ticker or row['date'] > last_date_for_ticker:
-                    rows_to_save.append(row)
-            
-            final_df = pd.DataFrame(rows_to_save)
-            cpu_part2_end = time.time()
-            cpu_duration_part2 = cpu_part2_end - cpu_part2_start
-            # --- End CPU Time Measurement (Part 2) ---
+        if not new_tickers and not out_of_date_tickers:
+            print("All tickers in this batch are up to date. Skipping.")
+            continue
 
+        # --- Download Logic ---
+        all_data_to_save = []
+
+        # 1. Download full history for brand new tickers
+        if new_tickers:
+            print(f"Found {len(new_tickers)} new tickers. Fetching full history...")
+            data_new = yf.download(new_tickers, start=START_DATE, progress=False, threads=True)
+            if not data_new.empty:
+                all_data_to_save.append(reshape_batch_data(data_new))
+
+        # 2. Download recent history for out-of-date tickers
+        if out_of_date_tickers:
+            print(f"Found {len(out_of_date_tickers)} out-of-date tickers. Fetching recent data...")
+            # Calculate start date based on the oldest of the out-of-date tickers
+            oldest_date_str = min(last_dates[t] for t in out_of_date_tickers)
+            start_update_date = (datetime.strptime(oldest_date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            data_outdated = yf.download(out_of_date_tickers, start=start_update_date, progress=False, threads=True)
+            if not data_outdated.empty:
+                reshaped_outdated = reshape_batch_data(data_outdated)
+                # Filter just in case (shouldn't be necessary but is safe)
+                rows_to_save = [row for _, row in reshaped_outdated.iterrows() if row['date'] > last_dates[row['ticker']]]
+                if rows_to_save:
+                    all_data_to_save.append(pd.DataFrame(rows_to_save))
+
+        # --- Save to DB ---
+        if all_data_to_save:
+            final_df = pd.concat(all_data_to_save, ignore_index=True)
             if not final_df.empty:
                 if save_data_to_db(final_df):
                     print(f"Successfully fetched and stored {len(final_df)} new records.")
             else:
                 print("No new records to store for this batch.")
+        else:
+            print("No new data found for this batch.")
 
-            # --- Print Timing Results ---
-            total_cpu_time = cpu_duration_part1 + cpu_duration_part2
-            print(f"  -> Network Time: {network_duration:.2f} seconds")
-            print(f"  -> CPU (Processing) Time: {total_cpu_time:.4f} seconds")
-
-        except Exception as e:
-            print(f"An error occurred while processing this batch: {e}")
-        
         time.sleep(DELAY_SECONDS)
 
 if __name__ == "__main__":
