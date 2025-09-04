@@ -149,7 +149,7 @@ def fetch_and_store_data_in_batches():
         
         today = datetime.now().date()
         weekday = today.weekday()
-        required_date = today - timedelta(days=weekday - 4) if weekday >= 5 else today - timedelta(days=1)
+        required_date = today - timedelta(days=weekday - 4) if weekday >= 5 else today
 
         new_tickers = [t for t in batch_tickers if t not in last_dates]
         out_of_date_tickers = [t for t in batch_tickers if t in last_dates and datetime.strptime(last_dates[t], '%Y-%m-%d').date() < required_date]
@@ -165,7 +165,7 @@ def fetch_and_store_data_in_batches():
         if new_tickers:
             print(f"Found {len(new_tickers)} new tickers. Fetching full history...")
             data_new = yf.download(new_tickers, start=START_DATE, progress=False, threads=True)
-            if not data_new.empty:
+            if data_new is not None and not data_new.empty:
                 all_data_to_save.append(reshape_batch_data(data_new))
 
         # 2. Download recent history for out-of-date tickers
@@ -176,7 +176,7 @@ def fetch_and_store_data_in_batches():
             start_update_date = (datetime.strptime(oldest_date_str, '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
             
             data_outdated = yf.download(out_of_date_tickers, start=start_update_date, progress=False, threads=True)
-            if not data_outdated.empty:
+            if data_outdated is not None and not data_outdated.empty:
                 reshaped_outdated = reshape_batch_data(data_outdated)
                 # Filter just in case (shouldn't be necessary but is safe)
                 rows_to_save = [row for _, row in reshaped_outdated.iterrows() if row['date'] > last_dates[row['ticker']]]

@@ -11,7 +11,7 @@ import numpy as np
 from stock_scanner import MIN_DOLLAR_VOLUME, MIN_ADR_PERCENT, MIN_CLOSE_PRICE, AVG_VOL_DAYS, ADR_DAYS, GAIN_DAYS_1M, GAIN_DAYS_3M, GAIN_DAYS_6M, EXCLUDED_INDUSTRIES, EXCLUDED_SECTORS, USE_MA200_FILTER, MA_DAYS_LONG
 
 # --- Ticker to Inspect (Edit this value) ---
-TICKER_TO_INSPECT = "BMNR"  # <--- CHANGE THIS TO THE TICKER YOU WANT TO CHECK
+TICKER_TO_INSPECT = "CRWV"  # <--- CHANGE THIS TO THE TICKER YOU WANT TO CHECK
 
 # --- Scan Parameters (Copied from stock_scanner.py for consistency) ---
 DB_FILE = "stock_market_data.db"

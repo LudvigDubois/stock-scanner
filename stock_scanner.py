@@ -16,7 +16,7 @@ MIN_DOLLAR_VOLUME = 5_000_000
 MIN_ADR_PERCENT = 7.0
 MIN_CLOSE_PRICE = 2.0
 
-AVG_VOL_DAYS = 20
+AVG_VOL_DAYS = 1
 ADR_DAYS = 20
 GAIN_DAYS_1M = 21
 GAIN_DAYS_3M = 63
@@ -37,7 +37,7 @@ EXCLUDED_SECTORS = [
     #'Healthcare'
 ]
 EXCLUDED_INDUSTRIES = [
-    #'Biotechnology'
+    'Biotechnology'
 ]
 
 def generate_tradingview_watchlist(results_df):
@@ -177,7 +177,7 @@ def run_scan():
     if final_results.empty:
         print("No stocks met all the specified criteria.")
     else:
-        output_cols = ['ticker', 'close', 'adr_percent', 'avg_dollar_volume', 'gain_1m', 'gain_3m', 'gain_6m', 'sector', 'industry']
+        output_cols = ['ticker', 'date', 'close', 'adr_percent', 'avg_dollar_volume', 'gain_1m', 'gain_3m', 'gain_6m', 'sector', 'industry']
         output_df = final_results[output_cols].copy()
         output_df['close'] = output_df['close'].map('${:,.2f}'.format)
         output_df['adr_percent'] = output_df['adr_percent'].map('{:.2f}%'.format)
